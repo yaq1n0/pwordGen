@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { estimateEntropyBits } from './entropy.js';
+import { estimateEntropyBits } from './entropy';
 
 describe('estimateEntropyBits', () => {
   describe('basic calculations', () => {
-    it('should return 0 for zero length', () => {
+    it.concurrent('should return 0 for zero length', () => {
       expect(estimateEntropyBits({ length: 0 })).toBe(0);
     });
 
-    it('should calculate entropy for single character class', () => {
+    it.concurrent('should calculate entropy for single character class', () => {
       // Lowercase only: 26 characters
       const entropy = estimateEntropyBits({
         length: 1,
@@ -20,7 +20,7 @@ describe('estimateEntropyBits', () => {
       expect(entropy).toBeCloseTo(Math.log2(26), 10);
     });
 
-    it('should calculate entropy for multiple character classes', () => {
+    it.concurrent('should calculate entropy for multiple character classes', () => {
       // All default classes combined and deduplicated
       const entropy = estimateEntropyBits({
         length: 1,
@@ -35,7 +35,7 @@ describe('estimateEntropyBits', () => {
       expect(entropy).toBeCloseTo(Math.log2(expectedPoolSize), 5);
     });
 
-    it('should scale entropy with length', () => {
+    it.concurrent('should scale entropy with length', () => {
       const entropy1 = estimateEntropyBits({ length: 1 });
       const entropy2 = estimateEntropyBits({ length: 2 });
       const entropy10 = estimateEntropyBits({ length: 10 });
@@ -47,32 +47,32 @@ describe('estimateEntropyBits', () => {
 
   describe('character class effects', () => {
     it('should have higher entropy with more character classes', () => {
-      const lowercaseOnly = estimateEntropyBits({
-        length: 10,
-        lowercase: true,
-        uppercase: false,
-        digits: false,
-        symbols: false,
-      });
+      const configs = [
+        {
+          name: 'lowercase only',
+          lowercase: true,
+          uppercase: false,
+          digits: false,
+          symbols: false,
+        },
+        {
+          name: 'lowercase + uppercase',
+          lowercase: true,
+          uppercase: true,
+          digits: false,
+          symbols: false,
+        },
+        { name: 'all classes', lowercase: true, uppercase: true, digits: true, symbols: true },
+      ];
 
-      const lowercaseAndUppercase = estimateEntropyBits({
-        length: 10,
-        lowercase: true,
-        uppercase: true,
-        digits: false,
-        symbols: false,
-      });
+      const entropies = configs.map(config => ({
+        name: config.name,
+        entropy: estimateEntropyBits({ length: 10, ...config }),
+      }));
 
-      const allClasses = estimateEntropyBits({
-        length: 10,
-        lowercase: true,
-        uppercase: true,
-        digits: true,
-        symbols: true,
-      });
-
-      expect(lowercaseAndUppercase).toBeGreaterThan(lowercaseOnly);
-      expect(allClasses).toBeGreaterThan(lowercaseAndUppercase);
+      // Each successive configuration should have higher entropy
+      for (let i = 1; i < entropies.length; i++)
+        expect(entropies[i].entropy).toBeGreaterThan(entropies[i - 1].entropy);
     });
 
     it('should handle custom characters', () => {
@@ -170,50 +170,40 @@ describe('estimateEntropyBits', () => {
 
   describe('monotonicity', () => {
     it('should be monotonic with length', () => {
-      const entropies: number[] = [];
-
-      for (let length = 1; length <= 20; length++) {
-        entropies.push(estimateEntropyBits({ length }));
-      }
+      const lengths = Array.from({ length: 20 }, (_, i) => i + 1);
+      const entropies = lengths.map(length => estimateEntropyBits({ length }));
 
       // Each entropy should be greater than or equal to the previous
-      for (let i = 1; i < entropies.length; i++) {
-        expect(entropies[i]).toBeGreaterThanOrEqual(entropies[i - 1]);
-      }
+      entropies.forEach((entropy, i) => {
+        if (i > 0) expect(entropy).toBeGreaterThanOrEqual(entropies[i - 1]);
+      });
     });
 
     it('should be monotonic with character pool size', () => {
       const configs = [
-        { lowercase: true, uppercase: false, digits: false, symbols: false },
-        { lowercase: true, uppercase: true, digits: false, symbols: false },
-        { lowercase: true, uppercase: true, digits: true, symbols: false },
-        { lowercase: true, uppercase: true, digits: true, symbols: true },
+        { name: '1 class', lowercase: true, uppercase: false, digits: false, symbols: false },
+        { name: '2 classes', lowercase: true, uppercase: true, digits: false, symbols: false },
+        { name: '3 classes', lowercase: true, uppercase: true, digits: true, symbols: false },
+        { name: '4 classes', lowercase: true, uppercase: true, digits: true, symbols: true },
       ];
 
       const entropies = configs.map(config => estimateEntropyBits({ length: 10, ...config }));
 
-      for (let i = 1; i < entropies.length; i++) {
-        expect(entropies[i]).toBeGreaterThan(entropies[i - 1]);
-      }
+      entropies.forEach((entropy, i) => {
+        if (i > 0) expect(entropy).toBeGreaterThan(entropies[i - 1]);
+      });
     });
   });
 
   describe('real-world examples', () => {
-    it('should give reasonable entropy for common password lengths', () => {
-      // 8-character password with all classes should be around 52 bits
-      const entropy8 = estimateEntropyBits({ length: 8 });
-      expect(entropy8).toBeGreaterThan(50);
-      expect(entropy8).toBeLessThan(55);
-
-      // 12-character password should be around 79 bits
-      const entropy12 = estimateEntropyBits({ length: 12 });
-      expect(entropy12).toBeGreaterThan(75);
-      expect(entropy12).toBeLessThan(85);
-
-      // 16-character password should be around 105 bits
-      const entropy16 = estimateEntropyBits({ length: 16 });
-      expect(entropy16).toBeGreaterThan(100);
-      expect(entropy16).toBeLessThan(110);
+    it.each([
+      [8, 50, 55, '8-character password'],
+      [12, 75, 85, '12-character password'],
+      [16, 100, 110, '16-character password'],
+    ])('should give reasonable entropy for %s (%s)', (length, minEntropy, maxEntropy) => {
+      const entropy = estimateEntropyBits({ length });
+      expect(entropy).toBeGreaterThan(minEntropy);
+      expect(entropy).toBeLessThan(maxEntropy);
     });
   });
 });

@@ -1,211 +1,47 @@
-import { getSecureRandomInt } from './crypto.js';
-import {
-  CHARACTER_CLASSES,
-  SIMILAR_CHARACTERS,
-  type PasswordOptions,
-  type NormalizedPasswordOptions,
-} from './types.js';
+import { getSecureRandomInt } from './crypto';
+import { CHARACTER_CLASSES, PasswordOptionsKeys, type PasswordOptions } from './types';
+import { normalizeOptions, buildCharacterPool, filterCharacters } from './utils';
 
-/**
- * Normalize password options with defaults
- */
-function normalizeOptions(options: PasswordOptions = {}): NormalizedPasswordOptions {
-  return {
-    length: options.length ?? 16,
-    lowercase: options.lowercase ?? true,
-    uppercase: options.uppercase ?? true,
-    digits: options.digits ?? true,
-    symbols: options.symbols ?? true,
-    custom: options.custom ?? '',
-    excludeSimilar: options.excludeSimilar ?? false,
-    exclude: options.exclude ?? '',
-    requireEachSelectedClass: options.requireEachSelectedClass ?? false,
-  };
-}
+/** Character class configuration for processing */
+const CHARACTER_CLASS_CONFIG = [
+  { key: 'lowercase' as PasswordOptionsKeys, chars: CHARACTER_CLASSES.lowercase },
+  { key: 'uppercase' as PasswordOptionsKeys, chars: CHARACTER_CLASSES.uppercase },
+  { key: 'digits' as PasswordOptionsKeys, chars: CHARACTER_CLASSES.digits },
+  { key: 'symbols' as PasswordOptionsKeys, chars: CHARACTER_CLASSES.symbols },
+  { key: 'custom' as PasswordOptionsKeys, chars: '' }, // Will use options.custom value
+] as const;
 
-/**
- * Build the character pool based on options
- */
-function buildCharacterPool(options: NormalizedPasswordOptions): string {
-  let pool = '';
+/** Get all selected character classes for validation */
+const getSelectedClasses = (options: PasswordOptions): string[] =>
+  CHARACTER_CLASS_CONFIG.filter(({ key }) => options[key]) // Only include enabled character classes
+    .map(({ key, chars }) => filterCharacters(key === 'custom' ? options.custom : chars, options)) // use options.custom if key is 'custom'
+    .filter(chars => chars.length > 0); // Only include non-empty character sets
 
-  // Add selected character classes
-  if (options.lowercase) {
-    pool += CHARACTER_CLASSES.lowercase;
-  }
-  if (options.uppercase) {
-    pool += CHARACTER_CLASSES.uppercase;
-  }
-  if (options.digits) {
-    pool += CHARACTER_CLASSES.digits;
-  }
-  if (options.symbols) {
-    pool += CHARACTER_CLASSES.symbols;
-  }
-  if (options.custom) {
-    pool += options.custom;
-  }
+/** Validate options and throw descriptive errors */
+const validateOptions = (options: PasswordOptions): void => {
+  if (options.length < 1) throw new Error('Password length must be at least 1');
 
-  // Remove similar characters if requested
-  if (options.excludeSimilar) {
-    pool = pool
-      .split('')
-      .filter(char => !SIMILAR_CHARACTERS.includes(char))
-      .join('');
-  }
-
-  // Remove explicitly excluded characters
-  if (options.exclude) {
-    pool = pool
-      .split('')
-      .filter(char => !options.exclude.includes(char))
-      .join('');
-  }
-
-  // Remove duplicates while preserving order
-  return [...new Set(pool.split(''))].join('');
-}
-
-/**
- * Get all selected character classes for validation
- */
-function getSelectedClasses(options: NormalizedPasswordOptions): string[] {
-  const classes: string[] = [];
-
-  if (options.lowercase) {
-    let chars: string = CHARACTER_CLASSES.lowercase;
-    if (options.excludeSimilar) {
-      chars = chars
-        .split('')
-        .filter(char => !SIMILAR_CHARACTERS.includes(char))
-        .join('');
-    }
-    if (options.exclude) {
-      chars = chars
-        .split('')
-        .filter(char => !options.exclude.includes(char))
-        .join('');
-    }
-    if (chars.length > 0) {
-      classes.push(chars);
-    }
-  }
-
-  if (options.uppercase) {
-    let chars: string = CHARACTER_CLASSES.uppercase;
-    if (options.excludeSimilar) {
-      chars = chars
-        .split('')
-        .filter(char => !SIMILAR_CHARACTERS.includes(char))
-        .join('');
-    }
-    if (options.exclude) {
-      chars = chars
-        .split('')
-        .filter(char => !options.exclude.includes(char))
-        .join('');
-    }
-    if (chars.length > 0) {
-      classes.push(chars);
-    }
-  }
-
-  if (options.digits) {
-    let chars: string = CHARACTER_CLASSES.digits;
-    if (options.excludeSimilar) {
-      chars = chars
-        .split('')
-        .filter(char => !SIMILAR_CHARACTERS.includes(char))
-        .join('');
-    }
-    if (options.exclude) {
-      chars = chars
-        .split('')
-        .filter(char => !options.exclude.includes(char))
-        .join('');
-    }
-    if (chars.length > 0) {
-      classes.push(chars);
-    }
-  }
-
-  if (options.symbols) {
-    let chars: string = CHARACTER_CLASSES.symbols;
-    if (options.excludeSimilar) {
-      chars = chars
-        .split('')
-        .filter(char => !SIMILAR_CHARACTERS.includes(char))
-        .join('');
-    }
-    if (options.exclude) {
-      chars = chars
-        .split('')
-        .filter(char => !options.exclude.includes(char))
-        .join('');
-    }
-    if (chars.length > 0) {
-      classes.push(chars);
-    }
-  }
-
-  if (options.custom) {
-    let chars: string = options.custom;
-    if (options.excludeSimilar) {
-      chars = chars
-        .split('')
-        .filter(char => !SIMILAR_CHARACTERS.includes(char))
-        .join('');
-    }
-    if (options.exclude) {
-      chars = chars
-        .split('')
-        .filter(char => !options.exclude.includes(char))
-        .join('');
-    }
-    if (chars.length > 0) {
-      classes.push(chars);
-    }
-  }
-
-  return classes;
-}
-
-/**
- * Validate options and throw descriptive errors
- */
-function validateOptions(options: NormalizedPasswordOptions): void {
-  if (options.length < 1) {
-    throw new Error('Password length must be at least 1');
-  }
-
-  if (!Number.isInteger(options.length)) {
-    throw new Error('Password length must be an integer');
-  }
+  if (!Number.isInteger(options.length)) throw new Error('Password length must be an integer');
 
   const pool = buildCharacterPool(options);
-  if (pool.length === 0) {
+  if (pool.length === 0)
     throw new Error('Character pool is empty - no characters available for password generation');
-  }
 
   if (options.requireEachSelectedClass) {
     const selectedClasses = getSelectedClasses(options);
-    if (selectedClasses.length > options.length) {
+    if (selectedClasses.length > options.length)
       throw new Error(
-        `Cannot require each selected class: need at least ${selectedClasses.length} characters ` +
-          `but password length is ${options.length}`
+        `Cannot require each selected class: need at least ${selectedClasses.length} characters but password length is ${options.length}`
       );
-    }
   }
-}
+};
 
-/**
- * Generate a password that satisfies the "require each class" constraint
- */
-function generateWithRequiredClasses(
+/** Generate a password that satisfies the "require each class" constraint */
+const generateWithRequiredClasses = (
   pool: string,
   selectedClasses: string[],
-  options: NormalizedPasswordOptions
-): string {
+  options: PasswordOptions
+): string => {
   const password: string[] = [];
 
   // First, add one character from each required class
@@ -227,12 +63,10 @@ function generateWithRequiredClasses(
   }
 
   return password.join('');
-}
+};
 
-/**
- * Generate a password with basic random selection
- */
-function generateBasic(pool: string, length: number): string {
+/** Generate a password with basic random selection */
+const generateBasic = (pool: string, length: number): string => {
   const password: string[] = [];
 
   for (let i = 0; i < length; i++) {
@@ -241,21 +75,16 @@ function generateBasic(pool: string, length: number): string {
   }
 
   return password.join('');
-}
+};
 
-/**
- * Generate a cryptographically secure password
- */
-export function generatePassword(options: PasswordOptions = {}): string {
+/** Generate a cryptographically secure password */
+export const generatePassword = (options: Partial<PasswordOptions> = {}): string => {
   const normalizedOptions = normalizeOptions(options);
   validateOptions(normalizedOptions);
 
   const pool = buildCharacterPool(normalizedOptions);
 
-  if (normalizedOptions.requireEachSelectedClass) {
-    const selectedClasses = getSelectedClasses(normalizedOptions);
-    return generateWithRequiredClasses(pool, selectedClasses, normalizedOptions);
-  } else {
-    return generateBasic(pool, normalizedOptions.length);
-  }
-}
+  return normalizedOptions.requireEachSelectedClass
+    ? generateWithRequiredClasses(pool, getSelectedClasses(normalizedOptions), normalizedOptions)
+    : generateBasic(pool, normalizedOptions.length);
+};

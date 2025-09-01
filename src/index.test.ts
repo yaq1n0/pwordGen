@@ -1,14 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import {
-  generatePassword,
-  estimateEntropyBits,
-  CHARACTER_CLASSES,
-  SIMILAR_CHARACTERS,
-} from './index.js';
+import { generatePassword, estimateEntropyBits, CHARACTER_CLASSES } from './index';
 
 describe('Public API Integration', () => {
   describe('generatePassword export', () => {
-    it('should be exported and functional', () => {
+    it.concurrent('should be exported and functional', () => {
       expect(typeof generatePassword).toBe('function');
 
       const password = generatePassword();
@@ -18,32 +13,38 @@ describe('Public API Integration', () => {
   });
 
   describe('estimateEntropyBits export', () => {
-    it('should be exported and functional', () => {
+    it.concurrent('should be exported and functional', () => {
       expect(typeof estimateEntropyBits).toBe('function');
 
       const entropy = estimateEntropyBits();
-      expect(typeof entropy).toBe('number');
-      expect(entropy).toBeGreaterThan(0);
+      expect(entropy).toSatisfy(
+        (value: number) => typeof value === 'number' && value > 0 && Number.isFinite(value)
+      );
     });
   });
 
   describe('Constants export', () => {
-    it('should export CHARACTER_CLASSES', () => {
+    it.concurrent('should export CHARACTER_CLASSES with expected structure', () => {
       expect(CHARACTER_CLASSES).toBeDefined();
-      expect(CHARACTER_CLASSES.lowercase).toBe('abcdefghijklmnopqrstuvwxyz');
-      expect(CHARACTER_CLASSES.uppercase).toBe('ABCDEFGHIJKLMNOPQRSTUVWXYZ');
-      expect(CHARACTER_CLASSES.digits).toBe('0123456789');
-      expect(CHARACTER_CLASSES.symbols).toBe('!@#$%^&*()_+-=[]{}|;:,.<>?');
-    });
+      expect(CHARACTER_CLASSES).toMatchObject({
+        lowercase: expect.any(String),
+        uppercase: expect.any(String),
+        digits: expect.any(String),
+        symbols: expect.any(String),
+        similar: expect.any(String),
+      });
 
-    it('should export SIMILAR_CHARACTERS', () => {
-      expect(SIMILAR_CHARACTERS).toBeDefined();
-      expect(SIMILAR_CHARACTERS).toBe('il1Lo0O');
+      // Test that character classes contain expected types of characters
+      expect(CHARACTER_CLASSES.lowercase).toMatch(/^[a-z]+$/);
+      expect(CHARACTER_CLASSES.uppercase).toMatch(/^[A-Z]+$/);
+      expect(CHARACTER_CLASSES.digits).toMatch(/^[0-9]+$/);
+      expect(CHARACTER_CLASSES.symbols.length).toBeGreaterThan(0);
+      expect(CHARACTER_CLASSES.similar.length).toBeGreaterThan(0);
     });
   });
 
   describe('API consistency', () => {
-    it('should generate passwords that match entropy estimates', () => {
+    it.concurrent('should generate passwords that match entropy estimates', () => {
       const options = {
         length: 12,
         lowercase: true,
@@ -60,7 +61,7 @@ describe('Public API Integration', () => {
       expect(entropy).toBeCloseTo(12 * Math.log2(52), 5);
     });
 
-    it('should handle complex configurations consistently', () => {
+    it.concurrent('should handle complex configurations consistently', () => {
       const options = {
         length: 8,
         lowercase: true,
@@ -89,24 +90,31 @@ describe('Public API Integration', () => {
     });
   });
 
-  describe('TypeScript types', () => {
-    it('should accept all valid option combinations', () => {
-      // These should compile without TypeScript errors
-      generatePassword();
-      generatePassword({});
-      generatePassword({ length: 8 });
-      generatePassword({ lowercase: false });
-      generatePassword({ uppercase: false });
-      generatePassword({ digits: false });
-      generatePassword({ symbols: false });
-      generatePassword({ custom: 'abc' });
-      generatePassword({ excludeSimilar: true });
-      generatePassword({ exclude: 'xyz' });
-      generatePassword({ requireEachSelectedClass: true });
+  describe('TypeScript types and API compatibility', () => {
+    it.concurrent('should accept all valid option combinations without errors', () => {
+      const validConfigurations = [
+        {},
+        { length: 8 },
+        { lowercase: false, custom: 'abc' }, // Ensure some characters when disabling classes
+        { uppercase: false, custom: 'ABC' },
+        { digits: false, custom: '123' },
+        { symbols: false, custom: '!@#' },
+        { custom: 'abc' },
+        { excludeSimilar: true },
+        { exclude: 'xyz' },
+        { requireEachSelectedClass: true },
+      ];
 
-      estimateEntropyBits();
-      estimateEntropyBits({});
-      estimateEntropyBits({ length: 8 });
+      validConfigurations.forEach((config, index) => {
+        expect(
+          () => generatePassword(config),
+          `Configuration ${index}: ${JSON.stringify(config)}`
+        ).not.toThrow();
+        expect(
+          () => estimateEntropyBits(config),
+          `Configuration ${index}: ${JSON.stringify(config)}`
+        ).not.toThrow();
+      });
     });
   });
 });

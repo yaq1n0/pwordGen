@@ -10,9 +10,6 @@
  * - Zero runtime dependencies
  */
 
-export { generatePassword } from './generator.js';
-export { estimateEntropyBits } from './entropy.js';
-export type { PasswordOptions } from './types.js';
-
-// Re-export constants for advanced usage
-export { CHARACTER_CLASSES, SIMILAR_CHARACTERS } from './types.js';
+export { generatePassword } from './generator';
+export { estimateEntropyBits } from './entropy';
+export { CHARACTER_CLASSES, type PasswordOptions } from './types';

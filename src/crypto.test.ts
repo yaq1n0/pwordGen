@@ -1,15 +1,18 @@
-import { describe, it, expect } from 'vitest';
-import { getRandomBytes, getSecureRandomInt } from './crypto.js';
+import { describe, it, expect, vi } from 'vitest';
+import { getRandomBytes, getSecureRandomInt } from './crypto';
+import { createDistributionTest } from './test-utils';
 
 describe('crypto', () => {
   describe('getRandomBytes', () => {
-    it('should generate bytes of the requested length', () => {
+    it.concurrent('should generate bytes of the requested length', () => {
       const bytes = getRandomBytes(16);
-      expect(bytes).toHaveLength(16);
+      expect(bytes).toMatchObject({
+        length: 16,
+      });
       expect(bytes).toBeInstanceOf(Uint8Array);
     });
 
-    it('should generate different bytes on multiple calls', () => {
+    it.concurrent('should generate different bytes on multiple calls', () => {
       const bytes1 = getRandomBytes(32);
       const bytes2 = getRandomBytes(32);
 
@@ -17,7 +20,7 @@ describe('crypto', () => {
       expect(bytes1).not.toEqual(bytes2);
     });
 
-    it('should work with zero length', () => {
+    it.concurrent('should work with zero length', () => {
       const bytes = getRandomBytes(0);
       expect(bytes).toHaveLength(0);
     });
@@ -28,9 +31,9 @@ describe('crypto', () => {
       const max = 10;
       for (let i = 0; i < 100; i++) {
         const result = getSecureRandomInt(max);
-        expect(result).toBeGreaterThanOrEqual(0);
-        expect(result).toBeLessThan(max);
-        expect(Number.isInteger(result)).toBe(true);
+        expect(result).toSatisfy(
+          (value: number) => value >= 0 && value < max && Number.isInteger(value)
+        );
       }
     });
 
@@ -38,37 +41,64 @@ describe('crypto', () => {
       expect(getSecureRandomInt(1)).toBe(0);
     });
 
-    it('should throw for invalid max values', () => {
-      expect(() => getSecureRandomInt(0)).toThrow('max must be a positive integer');
-      expect(() => getSecureRandomInt(-1)).toThrow('max must be a positive integer');
-      expect(() => getSecureRandomInt(1.5)).toThrow('max must be a positive integer');
+    it.each([
+      [0, 'max must be a positive integer'],
+      [-1, 'max must be a positive integer'],
+      [1.5, 'max must be a positive integer'],
+    ])('should throw for invalid max value %s', (invalidMax, expectedError) => {
+      expect(() => getSecureRandomInt(invalidMax)).toThrow(expectedError);
     });
 
     it('should have reasonable distribution for small ranges', () => {
       const max = 4;
-      const counts = new Array(max).fill(0);
       const iterations = 1000;
 
-      for (let i = 0; i < iterations; i++) {
-        const result = getSecureRandomInt(max);
-        counts[result]++;
-      }
+      const { counts } = createDistributionTest(() => getSecureRandomInt(max), iterations);
 
-      // Each value should appear roughly 25% of the time (with some tolerance)
+      // Convert counts object to array for testing
+      const countsArray = Array.from({ length: max }, (_, i) => counts[i] || 0);
       const expectedCount = iterations / max;
-      const tolerance = expectedCount * 0.3; // 30% tolerance
 
-      for (let i = 0; i < max; i++) {
-        expect(counts[i]).toBeGreaterThan(expectedCount - tolerance);
-        expect(counts[i]).toBeLessThan(expectedCount + tolerance);
-      }
+      expect(countsArray).toHaveReasonableDistribution(expectedCount, 0.3);
     });
 
-    it('should work with large max values', () => {
+    it.concurrent('should work with large max values', () => {
       const max = 256;
       const result = getSecureRandomInt(max);
-      expect(result).toBeGreaterThanOrEqual(0);
-      expect(result).toBeLessThan(max);
+      expect(result).toSatisfy((value: number) => value >= 0 && value < max);
+    });
+
+    it('should handle maximum attempts edge case', () => {
+      // Test the edge case by temporarily mocking getRandomBytes
+      // to return values that are always rejected by rejection sampling
+      const originalGetRandomBytes = globalThis.crypto?.getRandomValues;
+      let callCount = 0;
+
+      const mockGetRandomValues = vi.fn((arr: Uint8Array) => {
+        callCount++;
+        // Always return maximum values to force rejection
+        arr.fill(255);
+        return arr;
+      });
+
+      // Mock crypto.getRandomValues to force rejection sampling failures
+      Object.defineProperty(globalThis.crypto, 'getRandomValues', {
+        value: mockGetRandomValues,
+        configurable: true,
+      });
+
+      try {
+        expect(() => getSecureRandomInt(3)).toThrow(
+          'Failed to generate unbiased random number after maximum attempts'
+        );
+        expect(callCount).toBeGreaterThan(5); // Should have tried multiple times
+      } finally {
+        // Restore original function
+        Object.defineProperty(globalThis.crypto, 'getRandomValues', {
+          value: originalGetRandomBytes,
+          configurable: true,
+        });
+      }
     });
   });
 });

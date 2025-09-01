@@ -30,15 +30,12 @@ export default [
       '@typescript-eslint': tseslint,
     },
     rules: {
-      // TypeScript specific
       '@typescript-eslint/no-unused-vars': 'error',
-      
-      // General code quality
       'prefer-const': 'error',
       'no-var': 'error',
       'no-console': 'warn',
-      'eqeqeq': 'error',
-      'curly': 'error',
+      eqeqeq: 'error',
+      curly: ['error', 'multi'],
       'no-throw-literal': 'error',
       'no-unused-vars': 'off', // Turn off base rule in favor of @typescript-eslint version
     },
@@ -46,7 +43,6 @@ export default [
   {
     files: ['**/*.test.ts'],
     rules: {
-      // Allow console in tests
       'no-console': 'off',
     },
   },
