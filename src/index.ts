@@ -12,4 +12,4 @@
 
 export { generatePassword } from './generator';
 export { estimateEntropyBits } from './entropy';
-export { CHARACTER_CLASSES, type PasswordOptions } from './types';
+export { CHARACTER_CLASSES, type PasswordOptions, defaultOptions } from './types';
